@@ -1,0 +1,425 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Spray Control</title>
+  </head>
+  <body>
+    <table style="width:100%">
+      <thead>
+        <tr>
+          <th>Valve Pair 1</th>
+          <th>Valve Pair 2</th>
+          <th>Valve Pair 3</th>
+          <th>Valve Pair 4</th>
+        </tr>
+      </thead>
+      <tbody style="text-align:center">
+        <tr>
+          <td><button id="v1obtn" onClick="actuateValve({'id':1,'dir':true})">Open</button>
+              <p id="v1status">Status: Neutral</p>
+              <p id="v1current">Current: 0000.00 mA</p>
+              <button id="v1cbtn" onclick="actuateValve({'id':1,'dir':false})">Close</button></td>
+          <td><button id="v2obtn" onClick="actuateValve({'id':2,'dir':true})">Open</button>
+              <p id="v2status">Status: Neutral</p>
+              <p id="v2current">Current: 0000.00 mA</p>
+              <button id="v2cbtn" onclick="actuateValve({'id':2,'dir':false})">Close</button></td>
+          <td><button id="v3obtn" onClick="actuateValve({'id':3,'dir':true})">Open</button>
+              <p id="v3status">Status: Neutral</p>
+              <p id="v3current">Current: 0000.00 mA</p>
+              <button id="v3cbtn" onclick="actuateValve({'id':3,'dir':false})">Close</button></td>
+          <td><button id="v4obtn" onClick="actuateValve({'id':4,'dir':true})">Open</button>
+              <p id="v4status">Status: Neutral</p>
+              <p id="v4current">Current: 0000.00 mA</p>
+              <button id="v4cbtn" onclick="actuateValve({'id':4,'dir':false})">Close</button></td>
+        </tr>
+        <tr>
+          <td><button id="openall" onClick="actuateMultipleValves([{'id':1,'dir':true},{'id':2,'dir':true},{'id':3,'dir':true},{'id':4,'dir':true}])">Open All</button></td>
+          <td><button id="closeall" onClick="actuateMultipleValves([{'id':1,'dir':false},{'id':2,'dir':false},{'id':3,'dir':false},{'id':4,'dir':false}])">Close All</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <table>
+      <tbody style="text-align:left">
+        <tr><p id="supplyVoltage">Raspberry Pi Input Voltage: 00.000 V</p></tr>
+        <tr><p id="supplyCurrent">Raspberry Pi Input Current: 0000.00 mA</p></tr>
+      </tbody>
+    </table>
+    <form id="pipePosLimForm">
+      <label for="pipePosLimit">Positive Angle Limit</label>
+      <input type="text" id="pipePosLimit" name="pipePosLimit">
+      <input type="submit" value="Send">
+    </form>
+    <br>
+    <form id="pipeNegLimForm">
+      <label for="pipeNegLimit">Negative Angle Limit</label>
+      <input type="text" id="pipeNegLimit" name="pipeNegLimit">
+      <input type="submit" value="Send">
+    </form>
+    <br>
+    <form id="pipeAngleStepForm">
+      <label for="pipeAngleStep">Angle Step</label>
+      <input type="text" id="pipeAngleStep" name="pipeAngleStep">
+      <input type="submit" value="Send">
+    </form>
+    <br>
+    <div id="controllerStatus">No controller connected</div>
+    <div id="controllerLoopCounter">0</div>
+    <br>
+    <table style="width:100%">
+      <thead>
+        <tr>
+          <th id="clientHeader1">Client: Disconnected</th>
+          <th id="clientHeader2">Client: Disconnected</th>
+          <th id="clientHeader3">Client: Disconnected</th>
+          <th id="clientHeader4">Client: Disconnected</th>
+        </tr>
+      </thead>
+      <tbody style="text-align:center">
+        <tr>
+          <td>
+            <button id="client1en" onClick="setClientEnabled({'client':1, 'state':true})" disabled="true">Enable</button>
+            <button id="client1dis" onclick="setClientEnabled({'client':1, 'state':false})" disabled="true">Disable</button>
+          </td>
+          <td>
+            <button id="client2en" onClick="setClientEnabled({'client':2, 'state':true})" disabled="true">Enable</button>
+            <button id="client2dis" onclick="setClientEnabled({'client':2, 'state':false})" disabled="true">Disable</button>
+          </td>
+          <td>
+            <button id="client3en" onClick="setClientEnabled({'client':3, 'state':true})" disabled="true">Enable</button>
+            <button id="client3dis" onclick="setClientEnabled({'client':3, 'state':false})" disabled="true">Disable</button>
+          </td>
+          <td>
+            <button id="client4en" onClick="setClientEnabled({'client':4, 'state':true})" disabled="true">Enable</button>
+            <button id="client4dis" onclick="setClientEnabled({'client':4, 'state':false})" disabled="true">Disable</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+      
+
+    <script src="https://cdn.socket.io/4.4.0/socket.io.js"></script>
+    <script>
+      const socket = io("http://192.168.0.117:8080"); //IP address and port of spray server
+
+      var valve1State = NaN;
+      var valve2State = NaN;
+      var valve3State = NaN;
+      var valve4State = NaN;
+
+      var clientsidlist = [NaN, NaN, NaN, NaN];
+
+      var valveElements = [{'id':1, 'openButtonID':'v1obtn', 'closeButtonID':'v1cbtn', 'statusID':'v1status', 'currentID':'v1current'},
+                           {'id':2, 'openButtonID':'v2obtn', 'closeButtonID':'v2cbtn', 'statusID':'v2status', 'currentID':'v2current'},
+                           {'id':3, 'openButtonID':'v3obtn', 'closeButtonID':'v3cbtn', 'statusID':'v3status', 'currentID':'v3current'},
+                           {'id':4, 'openButtonID':'v4obtn', 'closeButtonID':'v4cbtn', 'statusID':'v4status', 'currentID':'v4current'},
+                           {'id':[1,2,3,4], 'openButtonID':'openall', 'closeButtonID':'closeall', 'statusID':null, 'currentID':null}]
+
+      function actuateValve(info) {
+        socket.emit("set_valve", info);
+      }
+
+      function actuateMultipleValves(info) {
+        info.forEach(element => {
+          actuateValve(element);
+        });
+      }
+
+      socket.on("valve_moving", function(data) {
+        console.log("Valve Moving");
+        console.log(data);
+        var valveID = data[0];
+        if(data[1] == true) {var direction = "Opening";}
+          else {var direction = "Closing";}
+        var latestCurrent = data[2];
+        var supplyVoltage = data[3];
+        var supplyCurrent = data[4];
+
+        document.getElementById('supplyVoltage').innerHTML = supplyVoltage;
+        document.getElementById('supplyCurrent').innerHTML = supplyCurrent;
+
+        valveElements.forEach(element => {
+          if((element['id'].constructor === Array && element['id'].includes(valveID)) || element['id'] == valveID) {  
+            document.getElementById(element['openButtonID']).disabled = true;
+            document.getElementById(element['closeButtonID']).disabled = true;
+            if(element['statusID'] != null) {
+              document.getElementById(element['statusID']).innerHTML = "Status: " + direction;
+            }
+            if(element['currentID'] != null) {
+              document.getElementById(element['currentID']).innerHTML = latestCurrent;
+            }
+          }
+        });
+      });
+
+      socket.on("valve_finished", function(data) {
+        console.log("Valve Finished");
+        console.log(data);
+        var valveID = data[0];
+        if(data[1] == true) {var direction = "   Open";}
+          else {var direction = "  Closed";}
+        valveElements.forEach(element => {
+          if((element['id'].constructor === Array && element['id'].includes(valveID)) || element['id'] == valveID) {  
+            document.getElementById(element['openButtonID']).disabled = false;
+            document.getElementById(element['closeButtonID']).disabled = false;
+            if(element['statusID'] != null) {
+              document.getElementById(element['statusID']).innerHTML = "Status: " + direction;
+            }
+            if(element['currentID'] != null) {
+              document.getElementById(element['currentID']).innerHTML = "Current: 0000.00 mA";
+            }
+          }
+        });
+      });
+
+      socket.on("valve_timeout", function(data) {
+        console.log("Valve Timed Out");
+        console.log(data)
+        var valveID = data[0];
+        if(data[1] == true) {var direction = "Opening";}
+          else {var direction = "Closing";}
+        valveElements.forEach(element => {
+          if((element['id'].constructor === Array && element['id'].includes(valveID)) || element['id'] == valveID) {  
+            document.getElementById(element['openButtonID']).disabled = false;
+            document.getElementById(element['closeButtonID']).disabled = false;
+            if(element['statusID'] != null) {
+              document.getElementById(element['statusID']).innerHTML = "Status: " + direction + " timed out.";
+            }
+            if(element['currentID'] != null) {
+              document.getElementById(element['currentID']).innerHTML = "Current: 0000.00 mA";
+            }
+          }
+        });
+      });
+
+      const shuffle_socket = io("http://192.168.1.102:8080"); //IP address and port of shuffle server
+
+      shuffle_socket.emit("get_client_info");
+
+      shuffle_socket.on("client_info", function(data) { //Data received is dict{'type':'rotator/shuffle', 'info':dict}
+        //Change appropriate table header to client name once connected
+        //Set disabled=false on Disable button under appropriate header
+        console.log(data);
+
+        if(data['info']['name'] === 'wildrose' && data['type'] === 'rotator') {
+          headerID = 'clientHeader1';
+          enableID = 'client1en';
+          disableID = 'client1dis';
+          clientsidlist[0] = data['info']['sid'];
+        }
+        if(data['info']['name'] === 'lonestar' && data['type'] === 'rotator') {
+          headerID = 'clientHeader2';
+          enableID = 'client2en';
+          disableID = 'client2dis';
+          clientsidlist[1] = data['info']['sid'];
+        }
+        if(data['info']['name'] === 'wildrose' && data['type'] === 'shuffle') {
+          headerID = 'clientHeader3';
+          enableID = 'client3en';
+          disbaleID = 'client3dis';
+          clientsidlist[2] = data['info']['sid'];
+        }
+        if(data['info']['name'] === 'lonestar' && data['type'] === 'shuffle') {
+          headerID = 'clientHeader4';
+          enableID = 'client4en';
+          disableID = 'client4dis';
+          clientsidlist[3] = data['info']['sid'];
+        }
+
+        document.getElementById(headerID).innerHTML = "Client: " + data['info']['name'].charAt(0).toUpperCase() + data['info']['name'].slice(1) + " " + data['type'];
+        document.getElementById(enableID).disabled = data['info']['enabled'];
+        document.getElementById(disableID).disabled = !data['info']['enabled'];
+      });
+
+      function setClientEnabled(info) {
+        //info = dict{'client':int, 'state':bool}
+        shuffle_socket.emit('set_client_enabled', {'sid':clientsidlist[info['client'] - 1], 'state':info['state']})
+      }
+
+      const pipePosLimitForm = document.getElementById("pipePosLimForm");
+      pipePosLimitForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        enteredValue = parseFloat(pipePosLimitForm['pipePosLimit'].value);
+        enteredValueIsNaN = isNaN(enteredValue);
+        if(enteredValueIsNaN) {alert("Invalid entry, please enter a number");}
+        else {
+          shuffle_socket.emit('set_pipe_pos_limit', enteredValue);
+          alert("Pipe Positive Angle Limit set to " + pipePosLimitForm['pipePosLimit'].value);
+        }        
+      });
+
+      const pipeNegLimitForm = document.getElementById("pipeNegLimForm");
+      pipeNegLimitForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        enteredValue = parseFloat(pipeNegLimitForm['pipeNegLimit'].value);
+        enteredValueIsNaN = isNaN(enteredValue);
+        if(enteredValueIsNaN) {alert("Invalid entry, please enter a number");}
+        else {
+          shuffle_socket.emit('set_pipe_neg_limit', enteredValue);
+          alert("Pipe Negative Angle Limit set to " + pipeNegLimitForm['pipeNegLimit'].value);
+        }        
+      });
+
+      const pipeAngleStepForm = document.getElementById("pipeAngleStepForm");
+      pipeAngleStepForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        enteredValue = parseFloat(pipeAngleStepForm['pipeAngleStep'].value);
+        enteredValueIsNaN = isNaN(enteredValue);
+        if(enteredValueIsNaN) {alert("Invalid entry, please enter a number");}
+        else {
+          shuffle_socket.emit('set_pipe_angle_step', enteredValue);
+          alert("Pipe Angle Step set to " + pipeAngleStepForm['pipeAngleStep'].value);
+        }        
+      });
+
+      let gamepadIndex;
+      window.addEventListener('gamepadconnected', (event) => {
+        gamepadIndex = event.gamepad.index;
+        document.getElementById(controllerStatus).innerHTML = "Controller detected";
+        shuffle_socket.emit('config', {'name':'web', 'shuffle':false, 'launcher':false, 'controller':true, 'rotator':false});
+        shuffle_socket.emit('controller_status', true)
+      });
+
+      const myGamepad = navigator.getGamepads()[gamepadIndex];
+      var a_held = false;
+      var b_held = false;
+      var x_held = false;
+      var dpad_left_held = false;
+      var dpad_right_held = false;
+      var rt_held = false;
+      var lt_held = false;
+      var left_stick_outside_deadzone = false;
+      var right_stick_up_held = false;
+      var right_stick_down_held = false;
+      var back_held = false;
+      var gamepadConnectionStatus = false;
+      var oldLeftX = 0;
+      var oldLeftY = 0;
+      var loopCounter = 0;
+
+      setInterval(() => {
+        if(gamepadIndex !== undefined) {
+          var leftX = myGamepad.axes[0];
+          var leftY = -1*myGamepad.axes[1];
+          var rightX = myGamepad.axes[2];
+          var rightY = -1*myGamepad.axes[3];
+
+          if(Math.sqrt((leftX ** 2) + (leftY ** 2)) >= 0.1) {
+            if(leftX != oldLeftX || leftY != oldLeftY) {
+              shuffle_socket.emit('manual_steer_input', [leftX, leftY]);
+              oldLeftX = leftX;
+              oldLeftY = leftY;
+            }
+          }
+          else if(oldLeftX != 0 || oldLeftY != 0) {
+            shuffle_socket.emit('manual_steer_input', [0,0]);
+            oldLeftX = 0;
+            oldLeftY = 0;
+          }
+
+          if(rightY >= 0.8 && !right_stick_up_held) {
+            shuffle_socket.emit('autoshuffle_start', {'dir':'advance'});
+            right_stick_up_held = true;
+          }
+          else if(right_stick_up_held && rightY < 0.8) {
+            shuffle_socket.emit('autoshuffle_cancel', {'dir':'advance'});
+            right_stick_up_held = false;
+          }
+          
+          if(rightY < -0.8 && !right_stick_down_held) {
+            shuffle_socket.emit('autoshuffle_start', {'dir':'reverse'});
+            right_stick_down_held = true;
+          }
+          else if(right_stick_down_held && rightY > -0.8) {
+            shuffle_socket.emit('autoshuffle_cancel', {'dir':'reverse'});
+            right_stick_down_held = false;
+          }
+
+          if(myGamepad.buttons[7].pressed && !rt_held) {
+            shuffle_socket.emit('pipe_oscillate_start');
+            rt_held = true;
+          }
+          else if(rt_held && !myGamepad.buttons[7].pressed) {
+            shuffle_socket.emit('pipe_osciallte_cancel');
+            rt_held = false;
+          }
+
+          if(myGamepad.buttons[6].pressed && !lt_held) {
+            shuffle_socket.emit('set_pipe_oscillate_shuffle', {'state':true});
+            shuffle_socket.emit('pipe_oscillate_start');
+            lt_held = true;
+          }
+          else if(lt_held && !myGamepad.buttons[6].pressed) {
+            shuffle_socket.emit('set_pipe_oscillate_shuffle', {'state':false, 'deg':NaN});
+            shuffle_socket.emit('pipe_oscillate_cancel');
+            lt_held = false;
+          }
+
+          if(myGamepad.buttons[0].pressed && !a_held) {
+            shuffle_socket.emit('set_pipe_oscillate_shuffle', {'state':true});
+            a_held = true;
+            document.getElementById(controllerStatus).innerHTML = "A button pressed";
+          }
+          else if(a_held && !myGamepad.buttons[0].pressed) {
+            shuffle_socket.emit('set_pipe_oscillate_shuffle', {'state':false, 'deg':NaN});
+            a_held = false;
+            document.getElementById(controllerStatus).innerHTML = "Controller detected";
+          }
+
+          if(myGamepad.buttons[1].pressed && !b_held) {
+            shuffle_socket.emit('manual_shuffle', {'dir':'retract'});
+            b_held = true;
+          }
+          else if(b_held && !myGamepad.buttons[1].pressed) {
+            shuffle_socket.emit('manual_shuffle', {'dir':'neutral'});
+            b_held = false;
+          }
+
+          if(myGamepad.buttons[2].pressed && !x_held) {
+            shuffle_socket.emit('manual_shuffle', {'dir':'extend'});
+            x_held = true;
+          }
+          else if(x_held && !myGamepad.buttons[2].pressed) {
+            shuffle_socket.emit('manual_shuffle', {'dir':'neutral'});
+            x_held = false;
+          }
+
+          if(myGamepad.buttons[14].pressed && !dpad_left_held) {
+            shuffle_socket.emit('pipe_rotate_start', {'dir':'left'});
+            dpad_left_held = true;
+          }
+          else if(dpad_left_held && !myGamepad.buttons[14].pressed) {
+            shuffle_socket.emit('pipe_rotate_cancel');
+            dpad_left_held = false;
+          }
+
+          if(myGamepad.buttons[15].pressed && !dpad_right_held) {
+            shuffle_socket.emit('pipe_rotate_start', {'dir':'right'});
+            dpad_right_held = true;
+          }
+          else if(dpad_right_held && !myGamepad.buttons[15].pressed) {
+            shuffle_socket.emit('pipe_rotate_cancel');
+            dpad_right_held = false;
+          }
+
+          if(myGamepad.buttons[8].pressed && !back_held) {
+            back_held = true;
+          }
+          else if(back_held && !myGamepad.buttons[8].pressed) {
+            shuffle_socket.emit('zero_pipe_rotator');
+            back_held = false;
+          }
+        }
+        loopCounter = loopCounter + 1;
+        if(loopCounter > 100) {
+          loopCounter = 0;
+        }
+        document.getElementById("controllerLoopCounter").innerHTML = loopCounter + '';
+      }, 100) //Check gamepad 10 times per second
+
+    </script>
+  </body>
+</html>
